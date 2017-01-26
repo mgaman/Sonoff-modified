@@ -10,6 +10,9 @@
 #include "APNManage.h"
 #include "FS.h"
 
+//#define NODEMCU
+//#define FORMAT_FILE_SYSTEM
+
 #define SECURE_MQTT
 // default SSID and password upon reset
 #define DEFAULT_SSID "Henry"
@@ -36,7 +39,8 @@ Adafruit_MQTT_Client mqtt(&client, BROKER_ADDRESS, BROKER_PORT);
 // COMMAND_TOPIC/?  - list all ssid's on disk
 // COMMAND_TOPIC/l  - list all local networks
 // COMMAND_TOPIC/a"ssid","password"  add new pair
-// COMMAND_TOPIC/ron (roff) relay on/off
+// COMMAND_TOPIC/ron (roff) relay on/off  or report current state
+// COMMAND_TOPIC/gon (goff) gpio14 on/off  or report current state
 
 Adafruit_MQTT_Subscribe accesspointcontrol = Adafruit_MQTT_Subscribe(&mqtt,COMMAND_TOPIC );
 Adafruit_MQTT_Publish apnreplies = Adafruit_MQTT_Publish(&mqtt,GENERAL_REPLY_TOPIC );
@@ -46,22 +50,32 @@ Adafruit_MQTT_Publish apnreplies = Adafruit_MQTT_Publish(&mqtt,GENERAL_REPLY_TOP
 char ssid[MAX_SSID_LENGTH], pwd[MAX_PASSWORD_LENGTH];
 char bestssid[MAX_SSID_LENGTH], bestpwd[MAX_PASSWORD_LENGTH];
 int bestrssi;
+bool relaystate;
+bool extrastate;
 
-#define LED 13
-#define RELAY 12
+#define RELAY_PIN 12
+#define LED_PIN 13
+#define EXTRA_PIN 14
 
 bool ssidFound = false;
 bool wifiConnected = false;
 
 void setup() {
-  pinMode(RELAY,OUTPUT);
-  digitalWrite(RELAY,HIGH);    // turns off
-  pinMode(LED,OUTPUT);
-  digitalWrite(LED,HIGH);    // turns off
+  pinMode(RELAY_PIN,OUTPUT);
+  RelayControl(false);
+  pinMode(LED_PIN,OUTPUT);
+  LedControl(false);
+  pinMode(EXTRA_PIN,OUTPUT);
+  extracontrol(false);
   Serial.begin(115200);
   delay(1000);
   Serial.println("\nSonoff code");
   SPIFFS.begin();
+#ifdef FORMAT_FILE_SYSTEM
+  Serial.print("Formatting FFS, takes around 30 secs...");
+  SPIFFS.format();
+  Serial.println("... Done");
+#endif
   // 1st time create new file with default entry, else do nothing
   bool initrc = SPIFFS.exists(APN_FILENAME) ?  APNInit() : APNInit(DEFAULT_SSID,DEFAULT_PWD);
   if (!initrc)
@@ -104,7 +118,7 @@ void setup() {
       LedBlink(5,1000,1000);
     }
     else
-      LedBlink(10,500,100);
+      LedBlink(10,100,500);
   }
 }
 
@@ -180,15 +194,14 @@ void relayonoffhandler(char message[])
   if (stricmp(message,"on") == 0)
   {
     LedControl(true); // led on
-    digitalWrite(RELAY,HIGH);
-    apnreplies.publish("relay on");
+    RelayControl(true);
   }
   else if (stricmp(message,"off") == 0)
   {
     LedControl(false); // led off
-    digitalWrite(RELAY,LOW);
-    apnreplies.publish("relay off");
+    RelayControl(false);
   }
+  apnreplies.publish(relaystate ? "relay on" : "relay off");
 }
 
 void accesspointcontrolhandler(char message[])
@@ -228,6 +241,10 @@ void accesspointcontrolhandler(char message[])
     case 'r':
     case 'R':
       relayonoffhandler(message+1);
+      break;
+    case 'g':
+    case 'G':
+      extrahandler(message+1);
       break;     
   } 
 }
@@ -271,7 +288,12 @@ void accesspointaddhandler(char message[])
 
 void LedControl(bool state)
 {
-  digitalWrite(LED, state ? HIGH : LOW);
+  digitalWrite(LED_PIN, state ?
+#ifdef NODEMCU
+                            HIGH : LOW);
+#else
+                            LOW : HIGH);
+#endif
 }
 void LedBlink(int count,int intervalon,int intervaloff)
 {
@@ -283,4 +305,25 @@ void LedBlink(int count,int intervalon,int intervaloff)
     delay(intervaloff);
   }
 }
+void RelayControl(bool state)
+{
+  digitalWrite(RELAY_PIN, state ? HIGH : LOW);
+  relaystate = state;
+}
+void extracontrol(bool state)
+{
+  digitalWrite(EXTRA_PIN, state ? HIGH : LOW);
+  extrastate = state;
+}
+void extrahandler(char message[])
+{
+  Serial.print(F("Got: "));
+  Serial.println(message);
+  if (stricmp(message,"on") == 0)
+    extracontrol(true);
+  else if (stricmp(message,"off") == 0)
+    extracontrol(false);
+  apnreplies.publish(extrastate? "extra on" : "extra off");
+}
+
 

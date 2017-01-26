@@ -23,28 +23,10 @@ bool APNAppend(char ssid[], char pwd[])
 }
 bool APNInit()
 {
-#if 0
-  if (!SPIFFS.exists(APN_FILENAME))
-  {
-    // Next lines have to be done ONLY ONCE!!!!!When SPIFFS is formatted ONCE you can comment these lines out!!
-    Serial.println("Please wait 30 secs for SPIFFS to be formatted");
-    SPIFFS.format();
-    Serial.println("Spiffs formatted");
-  }
-#endif
   return true;
 }
 bool APNInit(char ssid[],char pwd[])
 {
-#if 0
-  if (!SPIFFS.exists(APN_FILENAME))
-  {
-    // Next lines have to be done ONLY ONCE!!!!!When SPIFFS is formatted ONCE you can comment these lines out!!
-    Serial.println("Please wait 30 secs for SPIFFS to be formatted");
-    SPIFFS.format();
-    Serial.println("Spiffs formatted");
-  }
-#endif
   SPIFFS.remove(APN_FILENAME);
   return APNAppend(ssid,pwd);
 }
